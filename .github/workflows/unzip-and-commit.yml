@@ -1,0 +1,32 @@
+name: Unzip and Commit
+
+on:
+  push:
+    paths:
+      - '*.zip'
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Extract ZIP file
+        run: |
+          unzip -o *.zip -d extracted
+          rm *.zip
+
+      - name: Move extracted files to root
+        run: |
+          shopt -s dotglob
+          mv extracted/* .
+          rm -r extracted
+
+      - name: Commit and push extracted files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Auto-extracted ZIP contents" || echo "No changes to commit"
+          git push
