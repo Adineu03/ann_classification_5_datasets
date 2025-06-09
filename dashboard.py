@@ -9,6 +9,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 import keras_tuner as kt
 import plotly.express as px
+import tempfile
 
 # Set full screen and page config
 st.set_page_config(page_title="ANN Classification Dashboard", layout="wide")
@@ -101,24 +102,25 @@ def load_and_train(df, target_col, feature_cols, encode_cats=None, fe_drop=None)
     Xf_train_p = pca.fit_transform(Xf_train_s)
     Xf_test_p = pca.transform(Xf_test_s)
     # Keras Tuner
-    def build(hp):
-        m = models.Sequential()
-        for i in range(hp.Int('layers',1,2)):
-            m.add(layers.Dense(hp.Int(f'units{i}',16,64,16), activation='relu'))
-        if num_classes == 2:
-            m.add(layers.Dense(1, activation='sigmoid'))
-            m.compile('adam', loss='binary_crossentropy', metrics=['accuracy'])
-        else:
-            m.add(layers.Dense(num_classes, activation='softmax'))
-            m.compile('adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-        return m
-    tuner = kt.RandomSearch(build, objective='val_accuracy', max_trials=3, directory=f'tmp_{target_col}', project_name='tmp')
-    tuner.search(Xf_train_p, yfe_train, epochs=5, validation_split=0.1, verbose=0)
-    best = tuner.get_best_models(num_models=1)[0]
-    h_fe = best.fit(Xf_train_p, yfe_train, epochs=10, validation_split=0.1, verbose=0)
-    yfe_pred = np.argmax(best.predict(Xf_test_p),axis=1) if num_classes>2 else (best.predict(Xf_test_p)>0.5).astype(int).flatten()
-    cm_fe = confusion_matrix(yfe_test, yfe_pred)
-    acc_fe = accuracy_score(yfe_test, yfe_pred)
+    with tempfile.TemporaryDirectory() as tuner_dir:
+        def build(hp):
+            m = models.Sequential()
+            for i in range(hp.Int('layers',1,2)):
+                m.add(layers.Dense(hp.Int(f'units{i}',16,64,16), activation='relu'))
+            if num_classes == 2:
+                m.add(layers.Dense(1, activation='sigmoid'))
+                m.compile('adam', loss='binary_crossentropy', metrics=['accuracy'])
+            else:
+                m.add(layers.Dense(num_classes, activation='softmax'))
+                m.compile('adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+            return m
+        tuner = kt.RandomSearch(build, objective='val_accuracy', max_trials=3, directory=tuner_dir, project_name='tmp')
+        tuner.search(Xf_train_p, yfe_train, epochs=5, validation_split=0.1, verbose=0)
+        best = tuner.get_best_models(num_models=1)[0]
+        h_fe = best.fit(Xf_train_p, yfe_train, epochs=10, validation_split=0.1, verbose=0)
+        yfe_pred = np.argmax(best.predict(Xf_test_p),axis=1) if num_classes>2 else (best.predict(Xf_test_p)>0.5).astype(int).flatten()
+        cm_fe = confusion_matrix(yfe_test, yfe_pred)
+        acc_fe = accuracy_score(yfe_test, yfe_pred)
     return df, cm_base, acc_base, cm_fe, acc_fe, h_base, h_fe, le_target.classes_
 
 # Dataset icons
